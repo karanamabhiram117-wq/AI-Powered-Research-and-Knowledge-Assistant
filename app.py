@@ -1,6 +1,8 @@
 import os
+import io
 import secrets
 import threading
+import sqlite3
 import psycopg2
 import psycopg2.extras
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
@@ -11,6 +13,7 @@ from tavily import TavilyClient
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", secrets.token_hex(32))
+app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -18,54 +21,160 @@ login_manager.login_view = "login"
 login_manager.login_message = ""
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
+USE_SQLITE = not DATABASE_URL
+
+
+class _SqliteCompat:
+    def __init__(self):
+        self.con = sqlite3.connect("local.db")
+        self.con.row_factory = sqlite3.Row
+        self.con.execute("PRAGMA journal_mode=WAL")
+        self.con.execute("PRAGMA foreign_keys=ON")
+
+    def cursor(self, **kw):
+        return _CompatCursor(self.con.cursor())
+
+    def commit(self):
+        self.con.commit()
+
+    def rollback(self):
+        self.con.rollback()
+
+    def close(self):
+        self.con.close()
+
+
+class _CompatCursor:
+    def __init__(self, cur):
+        self._cur = cur
+
+    def execute(self, sql, params=None):
+        sql = sql.replace("%s", "?")
+        self._cur.execute(sql, params or ())
+        return self
+
+    def executemany(self, sql, seq):
+        sql = sql.replace("%s", "?")
+        self._cur.executemany(sql, seq)
+        return self
+
+    def fetchone(self):
+        return self._cur.fetchone()
+
+    def fetchall(self):
+        return self._cur.fetchall()
+
+    def close(self):
+        self._cur.close()
 
 
 def get_db():
+    if USE_SQLITE:
+        return _SqliteCompat()
     conn = psycopg2.connect(DATABASE_URL, sslmode="require")
     conn.autocommit = False
     return conn
 
 
+def _exec(conn, sql, params=None):
+    cur = conn.cursor()
+    cur.execute(sql, params or ())
+    return cur
+
+
+def _exec_dict(conn, sql, params=None):
+    if USE_SQLITE:
+        return _exec(conn, sql, params)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(sql, params or ())
+    return cur
+
+
 def init_db():
     conn = get_db()
-    cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id SERIAL PRIMARY KEY,
-            username TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS chats (
-            id SERIAL PRIMARY KEY,
-            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-            title TEXT NOT NULL DEFAULT 'New chat',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS messages (
-            id SERIAL PRIMARY KEY,
-            chat_id INTEGER REFERENCES chats(id) ON DELETE CASCADE,
-            role TEXT NOT NULL,
-            content TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS user_memory (
-            id SERIAL PRIMARY KEY,
-            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-            key TEXT NOT NULL,
-            value TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(user_id, key)
-        )
-    """)
-    conn.commit()
-    cur.close()
+    if USE_SQLITE:
+        conn.con.executescript("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                created_at TEXT DEFAULT (datetime('now'))
+            );
+            CREATE TABLE IF NOT EXISTS chats (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                title TEXT NOT NULL DEFAULT 'New chat',
+                created_at TEXT DEFAULT (datetime('now'))
+            );
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id INTEGER REFERENCES chats(id) ON DELETE CASCADE,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT DEFAULT (datetime('now'))
+            );
+            CREATE TABLE IF NOT EXISTS user_memory (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                key TEXT NOT NULL,
+                value TEXT NOT NULL,
+                created_at TEXT DEFAULT (datetime('now')),
+                UNIQUE(user_id, key)
+            );
+            CREATE TABLE IF NOT EXISTS document_chunks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id INTEGER REFERENCES chats(id) ON DELETE CASCADE,
+                content TEXT NOT NULL,
+                created_at TEXT DEFAULT (datetime('now'))
+            );
+        """)
+    else:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS chats (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                title TEXT NOT NULL DEFAULT 'New chat',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS messages (
+                id SERIAL PRIMARY KEY,
+                chat_id INTEGER REFERENCES chats(id) ON DELETE CASCADE,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_memory (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                key TEXT NOT NULL,
+                value TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, key)
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS document_chunks (
+                id SERIAL PRIMARY KEY,
+                chat_id INTEGER REFERENCES chats(id) ON DELETE CASCADE,
+                content TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+        cur.close()
     conn.close()
 
 
@@ -107,7 +216,7 @@ class User(UserMixin):
             row = cur.fetchone()
             conn.commit()
             user = User(row["id"], row["username"], row["password_hash"])
-        except psycopg2.IntegrityError:
+        except (psycopg2.IntegrityError, sqlite3.IntegrityError):
             conn.rollback()
             user = None
         finally:
@@ -265,6 +374,38 @@ def generate():
         if memories:
             system_content += f"\n\n{memories}"
 
+        if chat_id:
+            conn = get_db()
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute(
+                "SELECT content FROM document_chunks WHERE chat_id = %s ORDER BY id ASC",
+                (chat_id,)
+            )
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+            if rows:
+                total_words = 0
+                selected = []
+                for r in rows:
+                    wc = len(r["content"].split())
+                    if total_words + wc > 3000:
+                        break
+                    selected.append(r["content"])
+                    total_words += wc
+                doc_context = "\n\n".join(selected)
+                system_content += f"""
+DOCUMENT UPLOADED: The user has attached a document. The document content is provided below between the markers.
+Read the document content carefully and use it to answer the user's question.
+If the question cannot be answered from the document, say "This information is not in the uploaded document."
+
+---DOCUMENT CONTENT START---
+{doc_context}
+---DOCUMENT CONTENT END---"""
+                print(f"[DEBUG] Injected {len(selected)} chunks ({total_words} words) for chat {chat_id}")
+            else:
+                print(f"[DEBUG] No document chunks found for chat {chat_id}")
+
         if use_web_search:
             tavily = get_tavily_client()
             if not tavily:
@@ -273,8 +414,8 @@ def generate():
             context = "\n\n".join(
                 [r.get("content", "") for r in search_result.get("results", [])]
             )
-            system_content = (
-                "You are a helpful assistant with access to real-time web search results. "
+            system_content += (
+                "\n\nYou have access to real-time web search results. "
                 "Use the following web search context to answer the user's question accurately. "
                 "If the context is insufficient, say so.\n\n"
                 f"Web Search Results:\n{context}"
@@ -322,6 +463,24 @@ def generate():
         return jsonify({"response": f"Error: {str(e)}"})
 
 
+@app.route("/chats/<int:chat_id>/debug", methods=["GET"])
+@login_required
+def debug_chat(chat_id):
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT COUNT(*) as cnt FROM document_chunks WHERE chat_id = %s", (chat_id,))
+    chunk_count = cur.fetchone()["cnt"]
+    cur.execute("SELECT content FROM document_chunks WHERE chat_id = %s ORDER BY id LIMIT 1", (chat_id,))
+    first = cur.fetchone()
+    cur.close()
+    conn.close()
+    return jsonify({
+        "chat_id": chat_id,
+        "chunk_count": chunk_count,
+        "first_200_chars": (first["content"][:200] if first else None)
+    })
+
+
 @app.route("/chats", methods=["GET"])
 @login_required
 def get_chats():
@@ -334,7 +493,7 @@ def get_chats():
     chats = cur.fetchall()
     cur.close()
     conn.close()
-    return jsonify([{"id": c["id"], "title": c["title"], "created_at": c["created_at"].isoformat()} for c in chats])
+    return jsonify([{"id": c["id"], "title": c["title"], "created_at": c["created_at"].isoformat() if hasattr(c["created_at"], "isoformat") else c["created_at"]} for c in chats])
 
 
 @app.route("/chats", methods=["POST"])
@@ -352,7 +511,8 @@ def create_chat():
     conn.commit()
     cur.close()
     conn.close()
-    return jsonify({"id": chat["id"], "title": chat["title"], "created_at": chat["created_at"].isoformat()})
+    created_at = chat["created_at"].isoformat() if hasattr(chat["created_at"], "isoformat") else chat["created_at"]
+    return jsonify({"id": chat["id"], "title": chat["title"], "created_at": created_at})
 
 
 @app.route("/chats/<int:chat_id>", methods=["PUT"])
@@ -412,6 +572,62 @@ def save_message(chat_id):
     cur.close()
     conn.close()
     return jsonify({"ok": True})
+
+
+@app.route("/chats/<int:chat_id>/documents", methods=["GET"])
+@login_required
+def get_doc_count(chat_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM document_chunks WHERE chat_id = %s", (chat_id,))
+    count = cur.fetchone()[0]
+    cur.close()
+    conn.close()
+    return jsonify({"count": count})
+
+
+@app.route("/upload", methods=["POST"])
+@login_required
+def upload():
+    chat_id = request.form.get("chat_id")
+    file = request.files.get("file")
+    if not file or not chat_id:
+        return jsonify({"error": "Missing file or chat_id"}), 400
+
+    filename = file.filename.lower()
+    if not (filename.endswith(".pdf") or filename.endswith(".txt")):
+        return jsonify({"error": "Only PDF and TXT files allowed"}), 400
+
+    try:
+        if filename.endswith(".pdf"):
+            from PyPDF2 import PdfReader
+            reader = PdfReader(io.BytesIO(file.read()))
+            text = "\n".join([page.extract_text() or "" for page in reader.pages])
+        else:
+            text = file.read().decode("utf-8")
+
+        words = text.split()
+        if not words:
+            return jsonify({"error": "No text could be extracted from this file. It may be a scanned document or image-based PDF."}), 400
+
+        chunk_size = 500
+        chunks = [" ".join(words[i:i + chunk_size]) for i in range(0, len(words), chunk_size)]
+
+        conn = get_db()
+        cur = conn.cursor()
+        for chunk in chunks:
+            cur.execute(
+                "INSERT INTO document_chunks (chat_id, content) VALUES (%s, %s)",
+                (chat_id, chunk)
+            )
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        print(f"[DEBUG] Stored {len(chunks)} chunks for chat {chat_id}")
+        return jsonify({"ok": True, "chunks": len(chunks)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 init_db()

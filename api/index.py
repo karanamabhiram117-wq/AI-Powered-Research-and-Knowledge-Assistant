@@ -1,4 +1,5 @@
 import os
+import io
 import secrets
 import threading
 import sqlite3
@@ -10,6 +11,7 @@ from tavily import TavilyClient
 
 app = Flask(__name__, template_folder="templates")
 app.secret_key = os.environ.get("SECRET_KEY", secrets.token_hex(32))
+app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -60,6 +62,14 @@ def init_db():
             value TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(user_id, key)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS document_chunks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER REFERENCES chats(id) ON DELETE CASCADE,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
     conn.commit()
@@ -249,6 +259,37 @@ def generate():
         if memories:
             system_content += f"\n\n{memories}"
 
+        if chat_id:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT content FROM document_chunks WHERE chat_id = ? ORDER BY id ASC",
+                (chat_id,)
+            )
+            rows = cur.fetchall()
+            conn.close()
+            if rows:
+                total_words = 0
+                selected = []
+                for r in rows:
+                    wc = len(r[0].split())
+                    if total_words + wc > 3000:
+                        break
+                    selected.append(r[0])
+                    total_words += wc
+                doc_context = "\n\n".join(selected)
+                system_content += f"""
+DOCUMENT UPLOADED: The user has attached a document. The document content is provided below between the markers.
+Read the document content carefully and use it to answer the user's question.
+If the question cannot be answered from the document, say "This information is not in the uploaded document."
+
+---DOCUMENT CONTENT START---
+{doc_context}
+---DOCUMENT CONTENT END---"""
+                print(f"[DEBUG] Injected {len(selected)} chunks ({total_words} words) for chat {chat_id}")
+            else:
+                print(f"[DEBUG] No document chunks found for chat {chat_id}")
+
         if use_web_search:
             tavily = get_tavily_client()
             if not tavily:
@@ -257,8 +298,8 @@ def generate():
             context = "\n\n".join(
                 [r.get("content", "") for r in search_result.get("results", [])]
             )
-            system_content = (
-                "You are a helpful assistant with access to real-time web search results. "
+            system_content += (
+                "\n\nYou have access to real-time web search results. "
                 "Use the following web search context to answer the user's question accurately. "
                 "If the context is insufficient, say so.\n\n"
                 f"Web Search Results:\n{context}"
@@ -382,6 +423,73 @@ def save_message(chat_id):
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
+
+
+@app.route("/chats/<int:chat_id>/documents", methods=["GET"])
+@login_required
+def get_doc_count(chat_id):
+    conn = get_db()
+    count = conn.execute("SELECT COUNT(*) FROM document_chunks WHERE chat_id = ?", (chat_id,)).fetchone()[0]
+    conn.close()
+    return jsonify({"count": count})
+
+
+@app.route("/upload", methods=["POST"])
+@login_required
+def upload():
+    chat_id = request.form.get("chat_id")
+    file = request.files.get("file")
+    if not file or not chat_id:
+        return jsonify({"error": "Missing file or chat_id"}), 400
+
+    filename = file.filename.lower()
+    if not (filename.endswith(".pdf") or filename.endswith(".txt")):
+        return jsonify({"error": "Only PDF and TXT files allowed"}), 400
+
+    try:
+        if filename.endswith(".pdf"):
+            from PyPDF2 import PdfReader
+            reader = PdfReader(io.BytesIO(file.read()))
+            text = "\n".join([page.extract_text() or "" for page in reader.pages])
+        else:
+            text = file.read().decode("utf-8")
+
+        words = text.split()
+        if not words:
+            return jsonify({"error": "No text could be extracted from this file. It may be a scanned document or image-based PDF."}), 400
+
+        chunk_size = 500
+        chunks = [" ".join(words[i:i + chunk_size]) for i in range(0, len(words), chunk_size)]
+
+        conn = get_db()
+        for chunk in chunks:
+            conn.execute(
+                "INSERT INTO document_chunks (chat_id, content) VALUES (?, ?)",
+                (chat_id, chunk)
+            )
+        conn.commit()
+        conn.close()
+
+        return jsonify({"ok": True, "chunks": len(chunks)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/chats/<int:chat_id>/debug", methods=["GET"])
+@login_required
+def debug_chat(chat_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM document_chunks WHERE chat_id = ?", (chat_id,))
+    chunk_count = cur.fetchone()[0]
+    cur.execute("SELECT content FROM document_chunks WHERE chat_id = ? ORDER BY id LIMIT 1", (chat_id,))
+    first = cur.fetchone()
+    conn.close()
+    return jsonify({
+        "chat_id": chat_id,
+        "chunk_count": chunk_count,
+        "first_200_chars": (first[0][:200] if first else None)
+    })
 
 
 init_db()

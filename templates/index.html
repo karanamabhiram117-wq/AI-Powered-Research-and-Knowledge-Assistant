@@ -172,6 +172,26 @@
                 .search-btn.active { background: var(--purple-dim); color: var(--purple); border-color: rgba(167,139,250,0.3); }
                 .search-btn svg { width: 16px; height: 16px; }
 
+                .upload-btn { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--border); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); flex-shrink: 0; background: transparent; color: var(--text-3); margin-right: 4px; position: relative; }
+                .upload-btn:hover { background: var(--accent-dim); color: var(--text-1); border-color: var(--border-light); }
+                .upload-btn svg { width: 16px; height: 16px; }
+                .upload-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+                .upload-status { font-size: 11px; color: var(--text-3); margin-left: 8px; white-space: nowrap; }
+                .upload-notice { display: none; position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); background: var(--bg-3); border: 1px solid var(--border-light); border-radius: 10px; padding: 10px 18px; font-size: 13px; color: var(--text-1); z-index: 50; box-shadow: 0 8px 32px rgba(0,0,0,0.4); animation: msgIn 0.3s ease; max-width: 90%; text-align: center; }
+                .upload-notice.success { border-color: var(--green); }
+                .upload-notice.error { border-color: var(--red); color: var(--red); }
+
+                .doc-bar { display: none; align-items: center; gap: 8px; padding: 6px 12px; margin-bottom: 6px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 10px; font-size: 12px; color: var(--text-2); animation: msgIn 0.3s ease; }
+                .doc-bar-icon { display: flex; color: var(--purple); flex-shrink: 0; }
+                .doc-bar-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+                .doc-bar-close { background: none; border: none; color: var(--text-3); cursor: pointer; padding: 2px; border-radius: 4px; display: flex; flex-shrink: 0; }
+                .doc-bar-close:hover { background: var(--accent-dim); color: var(--text-1); }
+                .doc-bar.loading .doc-bar-icon { animation: spin 1s linear infinite; }
+                @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+                .doc-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px 3px 8px; margin-bottom: 8px; background: var(--purple-dim); border: 1px solid rgba(167,139,250,0.2); border-radius: 20px; font-size: 11px; color: var(--purple); font-weight: 500; }
+                .doc-badge svg { width: 12px; height: 12px; flex-shrink: 0; }
+
                 .send-btn { width: 36px; height: 36px; border-radius: 10px; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); flex-shrink: 0; background: var(--text-0); color: #000; }
                 .send-btn:hover { transform: scale(1.05); box-shadow: 0 4px 16px rgba(255,255,255,0.1); }
                 .send-btn:active { transform: scale(0.95); }
@@ -218,6 +238,8 @@
             .sidebar-foot { padding: 12px; }
             .search-btn { width: 32px; height: 32px; }
             .search-btn svg { width: 14px; height: 14px; }
+            .upload-btn { width: 32px; height: 32px; }
+            .upload-btn svg { width: 14px; height: 14px; }
             .send-btn { width: 32px; height: 32px; }
             .send-btn svg { width: 14px; height: 14px; }
             .content { min-width: 0; overflow-x: hidden; overflow-wrap: break-word; }
@@ -340,13 +362,27 @@
             <div class="messages" id="messages"></div>
         </div>
 
-        <div class="input-area">
+        <div class="upload-notice" id="uploadNotice"></div>
+    <div class="input-area">
             <div class="input-wrap">
+                <div class="doc-bar" id="docBar">
+                    <span class="doc-bar-icon">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                    </span>
+                    <span class="doc-bar-text" id="docBarText"></span>
+                    <button class="doc-bar-close" id="docBarClose" onclick="clearDocs()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
                 <div class="input-box">
                     <textarea id="prompt" rows="1" placeholder="Message Llama..." onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
                     <button class="search-btn" id="searchBtn" onclick="toggleSearch()" title="Web search">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
                     </button>
+                    <label class="upload-btn" id="uploadBtn" title="Upload PDF or TXT">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        <input type="file" accept=".pdf,.txt" onchange="uploadFile(this)">
+                    </label>
                     <button class="send-btn" id="sendBtn" onclick="generate()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                     </button>
@@ -368,6 +404,7 @@
         const chatHistoryEl = document.getElementById("chatHistory");
         let currentChatId = null;
         let useWebSearch = false;
+        let docCount = 0;
 
         function toggleSearch() {
             useWebSearch = !useWebSearch;
@@ -377,6 +414,99 @@
         function toggleSidebar() {
             document.querySelector(".sidebar").classList.toggle("open");
             document.getElementById("backdrop").classList.toggle("show");
+        }
+
+        function showNotice(msg, type) {
+            const el = document.getElementById("uploadNotice");
+            el.textContent = msg;
+            el.className = "upload-notice " + type;
+            el.style.display = "block";
+            clearTimeout(el._timer);
+            el._timer = setTimeout(() => el.style.display = "none", 4000);
+        }
+
+        function uploadFile(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const bar = document.getElementById("docBar");
+            const barText = document.getElementById("docBarText");
+
+            const doUpload = (chatId) => {
+                bar.className = "doc-bar loading";
+                barText.textContent = "Uploading " + file.name + "...";
+                bar.style.display = "flex";
+                document.getElementById("docBarClose").style.display = "none";
+
+                const form = new FormData();
+                form.append("file", file);
+                form.append("chat_id", chatId);
+                fetch("/upload", { method: "POST", body: form })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.ok && data.chunks > 0) {
+                            docCount += 1;
+                            updateDocBar();
+                            showNotice(file.name + " attached", "success");
+                        } else if (data.ok) {
+                            bar.style.display = "none";
+                            showNotice("No text found in this file", "error");
+                        } else {
+                            bar.style.display = "none";
+                            showNotice(data.error || "Upload failed", "error");
+                        }
+                    })
+                    .catch(() => {
+                        bar.style.display = "none";
+                        showNotice("Upload failed", "error");
+                    })
+                    .finally(() => { input.value = ""; });
+            };
+
+            if (currentChatId) {
+                doUpload(currentChatId);
+            } else {
+                bar.className = "doc-bar loading";
+                barText.textContent = "Creating chat...";
+                bar.style.display = "flex";
+                document.getElementById("docBarClose").style.display = "none";
+
+                fetch("/chats", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ title: file.name.substring(0, 60) })
+                })
+                .then(r => r.json())
+                .then(chat => {
+                    currentChatId = chat.id;
+                    addChatToSidebar(chat.id, chat.title, true);
+                    doUpload(chat.id);
+                })
+                .catch(() => {
+                    bar.style.display = "none";
+                    showNotice("Failed to create chat", "error");
+                    input.value = "";
+                });
+            }
+        }
+
+        function updateDocBar() {
+            const bar = document.getElementById("docBar");
+            const text = document.getElementById("docBarText");
+            const close = document.getElementById("docBarClose");
+            if (docCount > 0) {
+                bar.className = "doc-bar";
+                text.textContent = docCount + " file" + (docCount > 1 ? "s" : "") + " attached";
+                bar.style.display = "flex";
+                close.style.display = "block";
+            } else {
+                bar.style.display = "none";
+            }
+        }
+
+        function clearDocs() {
+            docCount = 0;
+            updateDocBar();
         }
 
         function autoResize(el) {
@@ -399,6 +529,8 @@
 
         function newChat() {
             currentChatId = null;
+            docCount = 0;
+            updateDocBar();
             messagesEl.innerHTML = "";
             welcomeEl.style.display = "flex";
             promptEl.value = "";
@@ -471,7 +603,18 @@
             promptEl.value = "";
             autoResize(promptEl);
             addMessage("user", prompt);
+            const hadDocs = docCount > 0;
+            if (hadDocs) {
+                const lastMsg = messagesEl.lastElementChild;
+                if (lastMsg) {
+                    const badge = document.createElement("div");
+                    badge.className = "doc-badge";
+                    badge.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> Using uploaded document';
+                    lastMsg.querySelector(".content").prepend(badge);
+                }
+            }
             addTyping();
+            clearDocs();
 
             try {
                 const res = await fetch("/generate", {
@@ -529,8 +672,14 @@
             messagesEl.innerHTML = "";
             welcomeEl.style.display = "none";
 
-            const res = await fetch(`/chats/${chatId}/messages`);
-            const messages = await res.json();
+            const [msgRes, docRes] = await Promise.all([
+                fetch(`/chats/${chatId}/messages`),
+                fetch(`/chats/${chatId}/documents`)
+            ]);
+            const messages = await msgRes.json();
+            const docData = await docRes.json();
+            docCount = docData.count;
+            updateDocBar();
             messages.forEach(m => addMessage(m.role, m.content));
         }
 
