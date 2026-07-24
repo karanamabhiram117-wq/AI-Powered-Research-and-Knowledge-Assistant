@@ -4,4 +4,4 @@ groq
 psycopg2-binary
 gunicorn
 tavily-python
-PyPDF2
+docling
