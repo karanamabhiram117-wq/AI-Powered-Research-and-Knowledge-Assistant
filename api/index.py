@@ -286,9 +286,7 @@ If the question cannot be answered from the document, say "This information is n
 ---DOCUMENT CONTENT START---
 {doc_context}
 ---DOCUMENT CONTENT END---"""
-                print(f"[DEBUG] Injected {len(selected)} chunks ({total_words} words) for chat {chat_id}")
-            else:
-                print(f"[DEBUG] No document chunks found for chat {chat_id}")
+
 
         if use_web_search:
             tavily = get_tavily_client()
@@ -481,23 +479,6 @@ def upload():
         return jsonify({"ok": True, "chunks": len(chunks)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-
-@app.route("/chats/<int:chat_id>/debug", methods=["GET"])
-@login_required
-def debug_chat(chat_id):
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) FROM document_chunks WHERE chat_id = ?", (chat_id,))
-    chunk_count = cur.fetchone()[0]
-    cur.execute("SELECT content FROM document_chunks WHERE chat_id = ? ORDER BY id LIMIT 1", (chat_id,))
-    first = cur.fetchone()
-    conn.close()
-    return jsonify({
-        "chat_id": chat_id,
-        "chunk_count": chunk_count,
-        "first_200_chars": (first[0][:200] if first else None)
-    })
 
 
 init_db()

@@ -2,7 +2,7 @@
 
 An AI-powered chatbot with document understanding, web search, and persistent memory. Supports PDF/TXT file uploads for contextual Q&A, real-time web search via Tavily, and long-term user memory extraction.
 
-Built with Flask, Groq LLM, Docling, and PostgreSQL. Deployable on Render or Vercel.
+Built with Flask, Groq LLM, Docling, and PostgreSQL.
 
 ## Features
 
@@ -19,12 +19,11 @@ Built with Flask, Groq LLM, Docling, and PostgreSQL. Deployable on Render or Ver
 | Backend | Python, Flask |
 | LLM | Groq API (Llama / OpenAI models) |
 | Document Extraction | Docling (AI-powered PDF parsing with OCR) |
-| Vector Store | None — full document context injected into LLM prompt |
 | Database | PostgreSQL / SQLite (local dev) |
 | Auth | Flask-Login, Werkzeug |
 | Web Search | Tavily API |
 | Frontend | Vanilla JavaScript, HTML, CSS |
-| Deployment | Render (gunicorn) / Vercel (serverless) |
+| Deployment | Render (gunicorn) |
 
 ## Quick Start
 
@@ -39,10 +38,10 @@ pip install -r requirements.txt
 Create a `.env` file:
 
 ```env
-GROQ_API_KEY=your_groq_key
-TAVILY_API_KEY=your_tavily_key
-SECRET_KEY=your_secret_here
-# DATABASE_URL=postgresql://...  (optional — uses SQLite locally if not set)
+GROQ_API_KEY=your_groq_api_key
+TAVILY_API_KEY=your_tavily_api_key
+SECRET_KEY=your_secret_key
+DATABASE_URL=postgresql://...  # Optional — uses SQLite locally if not set
 ```
 
 Run:
@@ -53,30 +52,35 @@ python app.py
 
 Open `http://localhost:5000`.
 
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GROQ_API_KEY` | Yes | API key for Groq LLM access |
+| `TAVILY_API_KEY` | No | API key for web search feature |
+| `SECRET_KEY` | No | Flask session secret (auto-generated if not set) |
+| `DATABASE_URL` | No | PostgreSQL connection string (uses SQLite locally if not set) |
+
 ## Project Structure
 
 ```
 ├── app.py                 # Flask app (PostgreSQL, for Render)
 ├── api/index.py           # Flask app (SQLite, for Vercel)
 ├── templates/
-│   ├── index.html         # Chat UI (Render)
+│   ├── index.html         # Chat UI
 │   ├── login.html
 │   └── register.html
 ├── api/templates/         # Mirrored templates for Vercel
 ├── requirements.txt
 ├── render.yaml
-└── vercel.json
+└── README.md
 ```
 
 ## Deployment
 
 ### Render
 
-`app.py` with PostgreSQL. Set environment variables (`DATABASE_URL`, `GROQ_API_KEY`, etc.) in Render dashboard.
-
-### Vercel
-
-`api/index.py` with SQLite. Deploy as a Python serverless function.
+Deploy `app.py` with PostgreSQL. Set the required environment variables in the Render dashboard.
 
 ## License
 

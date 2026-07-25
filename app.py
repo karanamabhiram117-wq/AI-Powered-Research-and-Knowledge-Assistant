@@ -402,9 +402,7 @@ If the question cannot be answered from the document, say "This information is n
 ---DOCUMENT CONTENT START---
 {doc_context}
 ---DOCUMENT CONTENT END---"""
-                print(f"[DEBUG] Injected {len(selected)} chunks ({total_words} words) for chat {chat_id}")
-            else:
-                print(f"[DEBUG] No document chunks found for chat {chat_id}")
+
 
         if use_web_search:
             tavily = get_tavily_client()
@@ -461,24 +459,6 @@ If the question cannot be answered from the document, say "This information is n
         return jsonify({"response": f"Error: Groq API error - {str(e)}"})
     except Exception as e:
         return jsonify({"response": f"Error: {str(e)}"})
-
-
-@app.route("/chats/<int:chat_id>/debug", methods=["GET"])
-@login_required
-def debug_chat(chat_id):
-    conn = get_db()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT COUNT(*) as cnt FROM document_chunks WHERE chat_id = %s", (chat_id,))
-    chunk_count = cur.fetchone()["cnt"]
-    cur.execute("SELECT content FROM document_chunks WHERE chat_id = %s ORDER BY id LIMIT 1", (chat_id,))
-    first = cur.fetchone()
-    cur.close()
-    conn.close()
-    return jsonify({
-        "chat_id": chat_id,
-        "chunk_count": chunk_count,
-        "first_200_chars": (first["content"][:200] if first else None)
-    })
 
 
 @app.route("/chats", methods=["GET"])
@@ -632,7 +612,6 @@ def upload():
         cur.close()
         conn.close()
 
-        print(f"[DEBUG] Stored {len(chunks)} chunks for chat {chat_id}")
         return jsonify({"ok": True, "chunks": len(chunks)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -641,4 +620,4 @@ def upload():
 init_db()
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=False, port=5000)
