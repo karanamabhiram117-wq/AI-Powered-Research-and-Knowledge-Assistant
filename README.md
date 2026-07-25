@@ -2,7 +2,7 @@
 
 An AI-powered chatbot with document understanding, web search, and persistent memory. Supports PDF/TXT file uploads for contextual Q&A, real-time web search via Tavily, and long-term user memory extraction.
 
-Built with Flask, Groq LLM, Docling, and Supabase (PostgreSQL). Deployable on Render or Vercel.
+Built with Flask, Groq LLM, Docling, and PostgreSQL. Deployable on Render or Vercel.
 
 ## Features
 
@@ -20,7 +20,7 @@ Built with Flask, Groq LLM, Docling, and Supabase (PostgreSQL). Deployable on Re
 | LLM | Groq API (Llama / OpenAI models) |
 | Document Extraction | Docling (AI-powered PDF parsing with OCR) |
 | Vector Store | None — full document context injected into LLM prompt |
-| Database | Supabase (PostgreSQL) / SQLite (local dev) |
+| Database | PostgreSQL / SQLite (local dev) |
 | Auth | Flask-Login, Werkzeug |
 | Web Search | Tavily API |
 | Frontend | Vanilla JavaScript, HTML, CSS |
@@ -42,7 +42,7 @@ Create a `.env` file:
 GROQ_API_KEY=your_groq_key
 TAVILY_API_KEY=your_tavily_key
 SECRET_KEY=your_secret_here
-# DATABASE_URL=postgresql://...  (optional — uses SQLite locally if unset)
+# DATABASE_URL=postgresql://...  (optional — uses SQLite locally if not set)
 ```
 
 Run:
@@ -56,7 +56,7 @@ Open `http://localhost:5000`.
 ## Project Structure
 
 ```
-├── app.py                 # Flask app (Supabase PostgreSQL, for Render)
+├── app.py                 # Flask app (PostgreSQL, for Render)
 ├── api/index.py           # Flask app (SQLite, for Vercel)
 ├── templates/
 │   ├── index.html         # Chat UI (Render)
@@ -72,7 +72,7 @@ Open `http://localhost:5000`.
 
 ### Render
 
-`app.py` with Supabase PostgreSQL. Set environment variables (`DATABASE_URL`, `GROQ_API_KEY`, etc.) in Render dashboard.
+`app.py` with PostgreSQL. Set environment variables (`DATABASE_URL`, `GROQ_API_KEY`, etc.) in Render dashboard.
 
 ### Vercel
 
