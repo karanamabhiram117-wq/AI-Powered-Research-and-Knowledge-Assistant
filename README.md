@@ -6,7 +6,7 @@ Built with Flask, Groq LLM, Docling, and PostgreSQL.
 
 ## Features
 
-- **Document Q&A** — Upload PDF or TXT files; the AI reads and answers from the document content using Docling for accurate text extraction (including scanned PDFs via OCR).
+- **Document Q&A** — Upload PDF or TXT files. Docling extracts the text (layout-aware, with OCR for scanned PDFs), splits it into 500-word chunks stored per chat, and injects up to 3000 words into the LLM prompt so the AI answers from your document.
 - **Web Search** — Toggle real-time web search (powered by Tavily API) to get up-to-date answers.
 - **Conversation Memory** — Short-term history within each chat and long-term user facts extracted and stored automatically.
 - **Mobile UI** — Responsive design with sidebar drawer, hamburger menu, and smooth animations.
