@@ -446,17 +446,24 @@ def upload():
 
     try:
         if filename.endswith(".pdf"):
+            pdf_bytes = file.read()
             import tempfile
-            from docling.document_converter import DocumentConverter
-            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-                tmp.write(file.read())
-                tmp_path = tmp.name
             try:
-                converter = DocumentConverter()
-                result = converter.convert(tmp_path)
-                text = result.document.export_to_markdown()
-            finally:
-                os.unlink(tmp_path)
+                from docling.document_converter import DocumentConverter
+                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                    tmp.write(pdf_bytes)
+                    tmp_path = tmp.name
+                try:
+                    converter = DocumentConverter()
+                    result = converter.convert(tmp_path)
+                    text = result.document.export_to_markdown()
+                finally:
+                    os.unlink(tmp_path)
+                if not text.strip():
+                    raise Exception("fallback")
+            except Exception:
+                from PyPDF2 import PdfReader
+                text = "\n".join([page.extract_text() or "" for page in PdfReader(io.BytesIO(pdf_bytes)).pages])
         else:
             text = file.read().decode("utf-8")
 
