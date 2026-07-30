@@ -251,7 +251,7 @@ def generate():
     try:
         client = get_client()
         if not client:
-            return jsonify({"response": "Error: GROQ_API_KEY not set. Please add it in Vercel settings."})
+            return jsonify({"response": "Error: GROQ_API_KEY not set. Please add it in your environment variables."})
 
         data = request.json
         prompt = data.get("prompt", "")
@@ -297,7 +297,7 @@ If the question cannot be answered from the document, say "This information is n
         if use_web_search:
             tavily = get_tavily_client()
             if not tavily:
-                return jsonify({"response": "Error: TAVILY_API_KEY not set. Please add it in Vercel settings."})
+                return jsonify({"response": "Error: TAVILY_API_KEY not set. Please add it in your environment variables."})
             search_result = tavily.search(query=prompt, search_depth="basic")
             context = "\n\n".join(
                 [r.get("content", "") for r in search_result.get("results", [])]
