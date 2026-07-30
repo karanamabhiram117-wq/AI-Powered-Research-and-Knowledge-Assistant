@@ -203,6 +203,11 @@ def health():
     })
 
 
+@app.errorhandler(413)
+def upload_too_large(_error):
+    return jsonify({"error": "File is too large. Maximum upload size is 10 MB."}), 413
+
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if current_user.is_authenticated:

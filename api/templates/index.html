@@ -442,20 +442,35 @@
                 form.append("file", file);
                 form.append("chat_id", chatId);
                 fetch("/upload", { method: "POST", body: form })
-                    .then(r => r.json())
+                    .then(async response => {
+                        const body = await response.text();
+                        let data;
+                        try {
+                            data = JSON.parse(body);
+                        } catch {
+                            throw new Error(`Upload failed (${response.status} ${response.statusText})`);
+                        }
+                        if (!response.ok) {
+                            throw new Error(data.error || `Upload failed (${response.status})`);
+                        }
+                        return data;
+                    })
                     .then(data => {
-                        if (data.ok) {
+                        if (data.ok && data.chunks > 0) {
                             docCount += 1;
                             updateDocBar();
                             showNotice(file.name + " attached", "success");
+                        } else if (data.ok) {
+                            bar.style.display = "none";
+                            showNotice("No text found in this file", "error");
                         } else {
                             bar.style.display = "none";
                             showNotice(data.error || "Upload failed", "error");
                         }
                     })
-                    .catch(() => {
+                    .catch(error => {
                         bar.style.display = "none";
-                        showNotice("Upload failed", "error");
+                        showNotice(error.message || "Upload failed", "error");
                     })
                     .finally(() => { input.value = ""; });
             };
