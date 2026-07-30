@@ -10,7 +10,13 @@ import groq
 from tavily import TavilyClient
 
 app = Flask(__name__, template_folder="templates")
-app.secret_key = os.environ.get("SECRET_KEY", secrets.token_hex(32))
+app.secret_key = os.environ.get("SECRET_KEY")
+if not app.secret_key:
+    try:
+        app.secret_key = open(".secret_key").read().strip()
+    except Exception:
+        app.secret_key = secrets.token_hex(32)
+        open(".secret_key", "w").write(app.secret_key)
 app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
 
 login_manager = LoginManager()
@@ -206,7 +212,7 @@ def register():
         else:
             user = User.create(username, password)
             if user:
-                login_user(user)
+                login_user(user, remember=True)
                 return redirect(url_for("index"))
             flash("Registration failed.")
 
@@ -224,7 +230,7 @@ def login():
 
         user = User.get_by_username(username)
         if user and check_password_hash(user.password_hash, password):
-            login_user(user)
+            login_user(user, remember=True)
             next_page = request.args.get("next")
             return redirect(next_page or url_for("index"))
         flash("Invalid username or password.")

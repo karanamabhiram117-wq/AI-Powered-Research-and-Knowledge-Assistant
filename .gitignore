@@ -8,3 +8,4 @@ models/
 .vercel/
 *.db
 nul
+.secret_key
