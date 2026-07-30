@@ -8,6 +8,8 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from werkzeug.security import generate_password_hash, check_password_hash
 import groq
 from tavily import TavilyClient
+from pypdf import PdfReader
+from pypdf.errors import PdfReadError
 
 app = Flask(__name__, template_folder="templates")
 app.secret_key = os.environ.get("SECRET_KEY")
@@ -190,6 +192,15 @@ MODEL = "openai/gpt-oss-120b"
 @login_required
 def index():
     return render_template("index.html", username=current_user.username)
+
+
+@app.route("/health")
+def health():
+    return jsonify({
+        "status": "ok",
+        "pdf_parser": "pypdf",
+        "commit": os.environ.get("RAILWAY_GIT_COMMIT_SHA", "local"),
+    })
 
 
 @app.route("/register", methods=["GET", "POST"])
@@ -452,11 +463,19 @@ def upload():
 
     try:
         if filename.endswith(".pdf"):
-            from PyPDF2 import PdfReader
-            text = "\n".join([page.extract_text() or "" for page in PdfReader(file).pages])
+            pdf_bytes = file.read()
+            reader = PdfReader(io.BytesIO(pdf_bytes), strict=False)
+            text = "\n".join(page.extract_text() or "" for page in reader.pages)
         else:
             text = file.read().decode("utf-8")
+    except PdfReadError:
+        return jsonify({"error": "The PDF is invalid, corrupted, or password protected."}), 400
+    except UnicodeDecodeError:
+        return jsonify({"error": "The text file must use UTF-8 encoding."}), 400
+    except Exception as e:
+        return jsonify({"error": f"Document parsing failed: {str(e)}"}), 500
 
+    try:
         words = text.split()
         if not words:
             return jsonify({"error": "No text could be extracted from this file. It may be a scanned document or image-based PDF."}), 400
@@ -475,7 +494,7 @@ def upload():
 
         return jsonify({"ok": True, "chunks": len(chunks)})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": f"Document storage failed: {str(e)}"}), 500
 
 
 init_db()
