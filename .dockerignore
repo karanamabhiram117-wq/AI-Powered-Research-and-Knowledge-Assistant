@@ -1,0 +1,14 @@
+venv/
+PYTHONLLM-projectvenv/
+__pycache__/
+*.pyc
+.env
+*.db
+.git
+.gitignore
+README.md
+render.yaml
+vercel.json
+.vercel/
+nul
+.secret_key
